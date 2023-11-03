@@ -1,0 +1,10 @@
+# folders
+.vscode/
+/data/
+__pycache__/
+/runs/
+/models/
+/results/
+
+# files
+*.out
