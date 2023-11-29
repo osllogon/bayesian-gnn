@@ -10,7 +10,7 @@ from torch_geometric.loader import DataLoader
 # other libraries
 import os
 from tqdm.auto import tqdm
-from typing import Literal, Tuple
+from typing import Literal, Tuple, Optional
 
 # own modules
 from src.utils import set_seed, load_data, compute_predictions_by_sampling
@@ -38,7 +38,8 @@ def main() -> None:
     # define variables
     dataset_name: Literal["QM9"] = "QM9"
     model_name: Literal["gcn", "gat"] = "gat"
-    bayesian: bool = True
+    bayesian_mode: Literal["none", "weights", "dropout"] = "dropout"
+    dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
     lr: float = 1e-3
@@ -52,10 +53,17 @@ def main() -> None:
 
     # define bayesian name full
     bayesian_name: str
-    if bayesian:
-        bayesian_name = f"{bayesian}_{kl_weight}"
+    if bayesian_mode == "none":
+        bayesian_name = str(bayesian_mode)
+
+    elif bayesian_mode == "weights":
+        bayesian_name = f"{bayesian_mode}_{kl_weight}"
+
+    elif bayesian_mode == "dropout":
+        bayesian_name = f"{bayesian_mode}_{dropout_rate}"
+
     else:
-        bayesian_name = str(bayesian)
+        raise ValueError("Invalid bayesian_mode")
 
     # define name and tensorboard writer
     name: str = f"d_{dataset_name}_m_{model_name}_nl_{num_hidden_layers}_lr_{lr}_b_{bayesian_name}"
@@ -72,9 +80,13 @@ def main() -> None:
     data: Data = next(iter(train_data))
     model: torch.nn.Module
     if model_name == "gcn":
-        model = GCN(data.x.shape[1], num_hidden_layers, 1, bayesian).to(device)
+        model = GCN(
+            data.x.shape[1], num_hidden_layers, 1, bayesian_mode, dropout_rate
+        ).to(device)
     elif model_name == "gat":
-        model = GAT(data.x.shape[1], num_hidden_layers, 1, bayesian).to(device)
+        model = GAT(
+            data.x.shape[1], num_hidden_layers, 1, bayesian_mode, dropout_rate
+        ).to(device)
     else:
         raise ValueError("Invalid model_name")
 
@@ -147,7 +159,7 @@ def main() -> None:
 
                 # compute outputs and loss value
                 outputs = model(x, edge_index, batch_indexes)
-                if bayesian:
+                if bayesian_mode != "none":
                     outputs = compute_predictions_by_sampling(
                         model, x, edge_index, batch_indexes, num_bayesian_samples
                     )

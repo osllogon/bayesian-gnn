@@ -1,16 +1,64 @@
 # deep learning libraries
 import torch
+import numpy as np
 
 
-def pi_ci(
+@torch.no_grad()
+def percentage_inside(
     predictions: torch.Tensor, target: torch.Tensor, num_stds: int
 ) -> torch.Tensor:
-    # define limits of ci
+    """
+    This fucntion computes the percentage of samples
+
+    Args:
+        predictions: predictions tensor. Dimensions: []
+        target: _description_
+        num_stds: _description_
+
+    Returns:
+        _description_
+    """
+
+    # define limits of confidence intervals
     upper_ci = torch.mean(predictions, dim=0) + num_stds * torch.std(predictions, dim=0)
     low_ci = torch.mean(predictions, dim=0) - num_stds * torch.std(predictions, dim=0)
 
-    # coutn inside samples
+    # count inside samples
     inside_samples: torch.Tensor = (target <= upper_ci) & (target >= low_ci)
     num_inside_samples: torch.Tensor = torch.sum(inside_samples) / predictions.shape[1]
 
     return num_inside_samples
+
+
+@torch.no_grad()
+def distance_distributions(percentage: float, num_stds: int) -> float:
+    """
+    This function computes the distance between the percentage of
+    samples inside the confidence interval and percentage of samples
+    inside 1 std of a gaussian distribution
+
+    Args:
+        percentage: percentage of samples inside the confidence
+            interval
+        num_stds: number of standard deviations
+
+    Raises:
+        ValueError: Invalid number of stds, only 1 to 3
+
+    Returns:
+        distance between the percentage of samples inside the
+            confidence interval and percentage of samples inside 1 std
+            of a gaussian distribution
+    """
+
+    # compute distance from the percentage to real confidence interval
+    distance: float
+    if num_stds == 1:
+        distance = abs(percentage - 0.68)
+    elif num_stds == 2:
+        distance = abs(percentage - 0.95)
+    elif num_stds == 3:
+        distance = abs(percentage - 0.997)
+    raise ValueError("Invalid number of stds, only 1 to 3")
+
+    return distance
