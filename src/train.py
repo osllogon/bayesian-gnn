@@ -38,7 +38,7 @@ def main() -> None:
     # define variables
     dataset_name: Literal["QM9"] = "QM9"
     model_name: Literal["gcn", "gat"] = "gat"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "dropout"
+    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
     dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters

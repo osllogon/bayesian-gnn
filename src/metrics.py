@@ -8,20 +8,27 @@ def percentage_inside(
     predictions: torch.Tensor, target: torch.Tensor, num_stds: int
 ) -> torch.Tensor:
     """
-    This fucntion computes the percentage of samples
+    This fucntion computes the percentage of samples inside confidence 
+    intervals
 
     Args:
-        predictions: predictions tensor. Dimensions: []
-        target: _description_
-        num_stds: _description_
+        predictions: predictions tensor. Dimensions:
+            [number of samples, number of predictions, 1]
+        target: target tensor. Dimenions: [number of nodes, 1]
+        num_stds: number of standard deviations
 
     Returns:
-        _description_
+        percentage of samples inside the confidence interval
     """
 
     # define limits of confidence intervals
-    upper_ci = torch.mean(predictions, dim=0) + num_stds * torch.std(predictions, dim=0)
-    low_ci = torch.mean(predictions, dim=0) - num_stds * torch.std(predictions, dim=0)
+    upper_ci = torch.mean(predictions, dim=0) + torch.quantile(
+        predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
+    )
+    torch.std(predictions, dim=0)
+    low_ci = torch.mean(predictions, dim=0) - torch.quantile(
+        predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
+    )
 
     # count inside samples
     inside_samples: torch.Tensor = (target <= upper_ci) & (target >= low_ci)
@@ -55,10 +62,14 @@ def distance_distributions(percentage: float, num_stds: int) -> float:
     distance: float
     if num_stds == 1:
         distance = abs(percentage - 0.68)
+
     elif num_stds == 2:
         distance = abs(percentage - 0.95)
+
     elif num_stds == 3:
         distance = abs(percentage - 0.997)
-    raise ValueError("Invalid number of stds, only 1 to 3")
+
+    else:
+        raise ValueError("Invalid number of stds, only 1 to 3")
 
     return distance

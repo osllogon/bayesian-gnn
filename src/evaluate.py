@@ -40,15 +40,15 @@ def main() -> None:
     # define variables
     dataset_name: Literal["QM9"] = "QM9"
     model_name: Literal["gcn", "gat"] = "gat"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "none"
-    dropout_rate: Optional[float] = None
+    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
+    dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
     lr: float = 1e-3
     num_hidden_layers: int = 2
     kl_weight: float = 1.0
     epochs: int = 100
-    num_bayesian_samples: int = 50
+    num_bayesian_samples: int = 500
 
     # check device
     print(f"device: {device}")
@@ -96,7 +96,7 @@ def main() -> None:
     # define metrics
     mae: torch.nn.Module = torch.nn.L1Loss()
 
-    model.eval()
+    model.train()
     with torch.no_grad():
         # init metrics lists
         maes: List[float] = []
@@ -138,7 +138,9 @@ def main() -> None:
                 percentages_insides[i].append(
                     percentage_inside(predictions, y[:, 0].unsqueeze(1), i + 1).item()
                 )
-                distances_distributions[i].append(percentages_insides[i][-1])
+                distances_distributions[i].append(
+                    distance_distributions(percentages_insides[i][-1], i + 1)
+                )
 
         # save results into dataframe
         df: pd.DataFrame = pd.DataFrame(
