@@ -13,10 +13,25 @@ from typing import Literal, Tuple
 
 
 def load_data(
-    dataset_name: Literal["QM9"],
+    dataset_name: Literal["QM9", "ZINC"],
     save_path: str,
     split_sizes: Tuple[float, float, float],
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """
+    This function loads the data.
+
+    Args:
+        dataset_name: name of the dataset.
+        save_path: _description_
+        split_sizes: _description_
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _description_
+    """
+    
     # load dataset
     dataset: InMemoryDataset
     if dataset_name == "QM9":
@@ -24,23 +39,38 @@ def load_data(
         dataset = torch_geometric.datasets.QM9(
             root=save_path,
         )
+        
+        # shuffle and get length
+        dataset = dataset.shuffle()
+        len_dataset = len(dataset)
+
+        # get datasets
+        train_dataset: InMemoryDataset = dataset[: int(split_sizes[0] * len_dataset)]
+        val_dataset: InMemoryDataset = dataset[
+            int(split_sizes[0] * len_dataset) : int(
+                (split_sizes[0] + split_sizes[1]) * len_dataset
+            )
+        ]
+        test_dataset: InMemoryDataset = dataset[
+            int((split_sizes[0] + split_sizes[1]) * len_dataset) :
+        ]
+        
+    elif dataset_name == "ZINC":
+        # get datasets
+        train_dataset = torch_geometric.datasets.ZINC(
+            root=f"{save_path}/train", split="train" 
+        )
+        val_dataset = torch_geometric.datasets.ZINC(
+            root=f"{save_path}/val", split="val" 
+        )
+        test_dataset = torch_geometric.datasets.ZINC(
+            root=f"{save_path}/test", split="test" 
+        )
+        
     else:
         raise ValueError("Invalid dataset name")
 
-    # shuffle and get length
-    dataset = dataset.shuffle()
-    len_dataset = len(dataset)
-
-    # get datasets
-    train_dataset: InMemoryDataset = dataset[: int(split_sizes[0] * len_dataset)]
-    val_dataset: InMemoryDataset = dataset[
-        int(split_sizes[0] * len_dataset) : int(
-            (split_sizes[0] + split_sizes[1]) * len_dataset
-        )
-    ]
-    test_dataset: InMemoryDataset = dataset[
-        int((split_sizes[0] + split_sizes[1]) * len_dataset) :
-    ]
+    
 
     # get dataloaders
     train_dataloader: DataLoader = DataLoader(train_dataset, batch_size=2048)

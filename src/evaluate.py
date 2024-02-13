@@ -38,9 +38,9 @@ def main() -> None:
     """
 
     # define variables
-    dataset_name: Literal["QM9"] = "QM9"
+    dataset_name: Literal["QM9", "ZINC"] = "ZINC"
     model_name: Literal["gcn", "gat"] = "gat"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
+    bayesian_mode: Literal["none", "weights", "dropout"] = "dropout"
     dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
@@ -114,6 +114,10 @@ def main() -> None:
             edge_index: torch.Tensor = data.edge_index.to(device)
             y: torch.Tensor = data.y.float().to(device)
             batch_indexes: torch.Tensor = data.batch.to(device)
+            
+            # choose target
+            if dataset_name == "QM9":
+                y = y[:, 0]
 
             # compute outputs to have the shape
             outputs: torch.Tensor = model(x, edge_index, batch_indexes)
@@ -131,12 +135,12 @@ def main() -> None:
                 stats.normaltest(predictions.detach().cpu().numpy(), axis=0)[1].mean()
             )
             maes.append(
-                mae(torch.mean(predictions, dim=0), y[:, 0].unsqueeze(1)).item()
+                mae(torch.mean(predictions, dim=0), y.unsqueeze(1)).item()
             )
 
             for i in range(len(percentages_insides)):
                 percentages_insides[i].append(
-                    percentage_inside(predictions, y[:, 0].unsqueeze(1), i + 1).item()
+                    percentage_inside(predictions, y.unsqueeze(1), i + 1).item()
                 )
                 distances_distributions[i].append(
                     distance_distributions(percentages_insides[i][-1], i + 1)

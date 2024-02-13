@@ -36,9 +36,9 @@ def main() -> None:
     """
 
     # define variables
-    dataset_name: Literal["QM9"] = "QM9"
+    dataset_name: Literal["QM9", "ZINC"] = "ZINC"
     model_name: Literal["gcn", "gat"] = "gat"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
+    bayesian_mode: Literal["none", "weights", "dropout"] = "dropout"
     dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
@@ -116,12 +116,16 @@ def main() -> None:
         for data in train_data:
             x = data.x.float().to(device)
             edge_index = data.edge_index.to(device)
-            y = data.y.float().to(device)
+            y: torch.Tensor = data.y.float().to(device)
             batch_indexes = data.batch.to(device)
+            
+            # choose target
+            if dataset_name == "QM9":
+                y = y[:, 0]
 
             # compute outputs and loss value
             outputs: torch.Tensor = model(x, edge_index, batch_indexes)
-            loss_mse = loss(outputs, y[:, 0].unsqueeze(1))
+            loss_mse = loss(outputs, y.unsqueeze(1))
             loss_kl = kl_weight / len(train_data) * kl_loss(model)
             loss_value = loss_mse + loss_kl
 
@@ -134,7 +138,7 @@ def main() -> None:
             loss_totals.append(loss_value.item())
             loss_mses.append(loss_mse.item())
             loss_kls.append(loss_kl.item())
-            maes.append(mae(outputs, y[:, 0].unsqueeze(1)).item())
+            maes.append(mae(outputs, y.unsqueeze(1)).item())
 
         # writer on tensorboard
         writer.add_scalar("loss_total/train", np.mean(loss_totals), epoch)
@@ -156,6 +160,10 @@ def main() -> None:
                 edge_index = data.edge_index.to(device)
                 y = data.y.float().to(device)
                 batch_indexes = data.batch.to(device)
+                
+                # choose target
+                if dataset_name == "QM9":
+                    y = y[:, 0]
 
                 # compute outputs and loss value
                 outputs = model(x, edge_index, batch_indexes)
@@ -167,7 +175,7 @@ def main() -> None:
                     outputs = model(x, edge_index, batch_indexes)
 
                 # add data
-                maes.append(mae(outputs, y[:, 0].unsqueeze(1)).item())
+                maes.append(mae(outputs, y.unsqueeze(1)).item())
 
             # writer on tensorboard
             writer.add_scalar("mae/val", np.mean(maes), epoch)
