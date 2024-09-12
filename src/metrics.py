@@ -8,7 +8,7 @@ def percentage_inside(
     predictions: torch.Tensor, target: torch.Tensor, num_stds: int
 ) -> torch.Tensor:
     """
-    This fucntion computes the percentage of samples inside confidence 
+    This fucntion computes the percentage of samples inside confidence
     intervals
 
     Args:

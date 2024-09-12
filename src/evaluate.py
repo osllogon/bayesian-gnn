@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 # other libraries
 import os
 from tqdm.auto import tqdm
-from typing import Literal, Tuple, List, Optional
+from typing import Literal, Optional
 
 # own modules
 from src.utils import set_seed
@@ -26,7 +26,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 DATA_PATH: str = "data"
 SAVE_PATH: str = "models"
 RESULTS_PATH: str = "results"
-SPLIT_SIZES: Tuple[float, float, float] = (0.7, 0.15, 0.15)
+SPLIT_SIZES: tuple[float, float, float] = (0.7, 0.15, 0.15)
 
 
 def main() -> None:
@@ -38,9 +38,9 @@ def main() -> None:
     """
 
     # define variables
-    dataset_name: Literal["QM9", "ZINC"] = "ZINC"
-    model_name: Literal["gcn", "gat"] = "gat"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "dropout"
+    dataset_name: Literal["QM9", "ZINC"] = "QM9"
+    model_name: Literal["gcn", "gat"] = "gcn"
+    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
     dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
@@ -49,6 +49,9 @@ def main() -> None:
     kl_weight: float = 1.0
     epochs: int = 100
     num_bayesian_samples: int = 500
+
+    # empty nohup file
+    open("nohup.out", "w").close()
 
     # check device
     print(f"device: {device}")
@@ -78,11 +81,19 @@ def main() -> None:
     model: torch.nn.Module
     if model_name == "gcn":
         model = GCN(
-            data.x.shape[1], num_hidden_layers, 1, bayesian_mode, dropout_rate
+            data.x.shape[1],
+            num_hidden_layers,
+            data.y.shape[1],
+            bayesian_mode,
+            dropout_rate,
         ).to(device)
     elif model_name == "gat":
         model = GAT(
-            data.x.shape[1], num_hidden_layers, 1, bayesian_mode, dropout_rate
+            data.x.shape[1],
+            num_hidden_layers,
+            data.y.shape[1],
+            bayesian_mode,
+            dropout_rate,
         ).to(device)
     else:
         raise ValueError("Invalid model_name")
@@ -96,13 +107,28 @@ def main() -> None:
     # define metrics
     mae: torch.nn.Module = torch.nn.L1Loss()
 
+    # define metrics names
+    metrics_names: list[str] = [
+        "mae",
+        "normal test",
+        "percentage inside ci std 1",
+        "percentage inside ci std 2",
+        "percentage inside ci std 3",
+        "distance distributions ci std 1",
+        "distance distributions ci std 2",
+        "distance distributions ci std 3",
+    ]
+
+    # create metrics
+    metrics: np.ndarray = np.empty((data.y.shape[1], len(metrics_names)))
+
     model.train()
     with torch.no_grad():
         # init metrics lists
-        maes: List[float] = []
-        normal_tests: List[float] = []
-        percentages_insides: Tuple[List[float], List[float], List[float]] = ([], [], [])
-        distances_distributions: Tuple[List[float], List[float], List[float]] = (
+        maes: list[float] = []
+        normal_tests: list[float] = []
+        percentages_insides: tuple[list[float], list[float], list[float]] = ([], [], [])
+        distances_distributions: tuple[list[float], list[float], list[float]] = (
             [],
             [],
             [],
@@ -114,10 +140,6 @@ def main() -> None:
             edge_index: torch.Tensor = data.edge_index.to(device)
             y: torch.Tensor = data.y.float().to(device)
             batch_indexes: torch.Tensor = data.batch.to(device)
-            
-            # choose target
-            if dataset_name == "QM9":
-                y = y[:, 0]
 
             # compute outputs to have the shape
             outputs: torch.Tensor = model(x, edge_index, batch_indexes)
@@ -130,46 +152,31 @@ def main() -> None:
             for i in range(num_bayesian_samples):
                 predictions[i] = model(x, edge_index, batch_indexes)
 
-            # add metrics to metrics lists
-            normal_tests.append(
-                stats.normaltest(predictions.detach().cpu().numpy(), axis=0)[1].mean()
-            )
-            maes.append(
-                mae(torch.mean(predictions, dim=0), y.unsqueeze(1)).item()
-            )
+            for j in range(data.y.shape[1]):
+                # add metrics to metrics lists
+                metrics[j, 0] += stats.normaltest(
+                    predictions[:, j].detach().cpu().numpy(), axis=0
+                )[1].mean()
+                metrics[j, 1] += mae(
+                    torch.mean(predictions[:, :, j], dim=0), y[:, j]
+                ).item()
 
-            for i in range(len(percentages_insides)):
-                percentages_insides[i].append(
-                    percentage_inside(predictions, y.unsqueeze(1), i + 1).item()
-                )
-                distances_distributions[i].append(
-                    distance_distributions(percentages_insides[i][-1], i + 1)
-                )
+                for i in range(len(percentages_insides)):
+                    percentage_inside_value = percentage_inside(
+                        predictions[:, :, j], y[:, j], i + 1
+                    ).item()
+                    metrics[j, 2 + i] += percentage_inside_value
+                    metrics[j, 5 + i] += distance_distributions(
+                        percentage_inside_value, i + 1
+                    )
+
+        # divide to compute average
+        metrics /= len(test_data)
 
         # save results into dataframe
         df: pd.DataFrame = pd.DataFrame(
-            columns=[
-                "mae",
-                "normal test",
-                "percentage inside ci std 1",
-                "percentage inside ci std 2",
-                "percentage inside ci std 3",
-                "distance distributions ci std 1",
-                "distance distributions ci std 2",
-                "distance distributions ci std 3",
-            ],
-            data=np.array(
-                [
-                    np.mean(maes),
-                    np.mean(normal_tests),
-                    np.mean(percentages_insides[0]),
-                    np.mean(percentages_insides[1]),
-                    np.mean(percentages_insides[2]),
-                    np.mean(distances_distributions[0]),
-                    np.mean(distances_distributions[1]),
-                    np.mean(distances_distributions[2]),
-                ]
-            )[np.newaxis, :],
+            columns=metrics_names,
+            data=metrics,
         )
 
         # create dir if it does not exist

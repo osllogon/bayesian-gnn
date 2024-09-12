@@ -31,15 +31,15 @@ def load_data(
     Returns:
         _description_
     """
-    
+
     # load dataset
     dataset: InMemoryDataset
     if dataset_name == "QM9":
         # get dataset
         dataset = torch_geometric.datasets.QM9(
-            root=save_path,
+            root=save_path, transform=NormalizeFeatures()
         )
-        
+
         # shuffle and get length
         dataset = dataset.shuffle()
         len_dataset = len(dataset)
@@ -54,23 +54,21 @@ def load_data(
         test_dataset: InMemoryDataset = dataset[
             int((split_sizes[0] + split_sizes[1]) * len_dataset) :
         ]
-        
+
     elif dataset_name == "ZINC":
         # get datasets
         train_dataset = torch_geometric.datasets.ZINC(
-            root=f"{save_path}/train", split="train" 
+            root=f"{save_path}/train", split="train"
         )
         val_dataset = torch_geometric.datasets.ZINC(
-            root=f"{save_path}/val", split="val" 
+            root=f"{save_path}/val", split="val"
         )
         test_dataset = torch_geometric.datasets.ZINC(
-            root=f"{save_path}/test", split="test" 
+            root=f"{save_path}/test", split="test"
         )
-        
+
     else:
         raise ValueError("Invalid dataset name")
-
-    
 
     # get dataloaders
     train_dataloader: DataLoader = DataLoader(train_dataset, batch_size=2048)
