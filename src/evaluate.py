@@ -39,7 +39,7 @@ def main() -> None:
 
     # define variables
     dataset_name: Literal["QM9", "ZINC"] = "QM9"
-    model_name: Literal["gcn", "gat"] = "gcn"
+    model_name: Literal["gcn", "gat"] = "gat"
     bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
     dropout_rate: Optional[float] = 0.5
 
@@ -72,9 +72,13 @@ def main() -> None:
 
     # define dataset
     test_data: DataLoader
-    train_data, _, test_data = load_data(
+    train_data, _, test_data, x_scaler, y_scaler = load_data(
         dataset_name, f"{DATA_PATH}/{dataset_name}", SPLIT_SIZES
     )
+
+    # change device of scalers
+    x_scaler = x_scaler.to(device)
+    y_scaler = y_scaler.to(device)
 
     # define model
     data: Data = next(iter(test_data))
@@ -109,18 +113,17 @@ def main() -> None:
 
     # define metrics names
     metrics_names: list[str] = [
-        "mae",
-        "normal test",
-        "percentage inside ci std 1",
-        "percentage inside ci std 2",
-        "percentage inside ci std 3",
-        "distance distributions ci std 1",
-        "distance distributions ci std 2",
-        "distance distributions ci std 3",
+        "MAE",
+        "pi-ci std 1",
+        "pi-ci std 2",
+        "pi-ci std 3",
+        "pi-ci std 0.1",
+        "pi-ci std 0.2",
+        "pi-ci std 0.3",
     ]
 
     # create metrics
-    metrics: np.ndarray = np.empty((data.y.shape[1], len(metrics_names)))
+    metrics: np.ndarray = np.zeros((data.y.shape[1], len(metrics_names)))
 
     model.train()
     with torch.no_grad():
@@ -136,7 +139,7 @@ def main() -> None:
 
         # iterate over data
         for data in tqdm(test_data):
-            x: torch.Tensor = data.x.float().to(device)
+            x: torch.Tensor = x_scaler.transform(data.x.float().to(device))
             edge_index: torch.Tensor = data.edge_index.to(device)
             y: torch.Tensor = data.y.float().to(device)
             batch_indexes: torch.Tensor = data.batch.to(device)
@@ -150,14 +153,16 @@ def main() -> None:
             ).to(device)
 
             for i in range(num_bayesian_samples):
-                predictions[i] = model(x, edge_index, batch_indexes)
+                predictions[i] = y_scaler.inverse_transform(
+                    model(x, edge_index, batch_indexes)
+                )
 
             for j in range(data.y.shape[1]):
                 # add metrics to metrics lists
-                metrics[j, 0] += stats.normaltest(
-                    predictions[:, j].detach().cpu().numpy(), axis=0
-                )[1].mean()
-                metrics[j, 1] += mae(
+                # metrics[j, 0] += stats.normaltest(
+                #     predictions[:, j].detach().cpu().numpy(), axis=0
+                # )[1].mean()
+                metrics[j, 0] += mae(
                     torch.mean(predictions[:, :, j], dim=0), y[:, j]
                 ).item()
 
@@ -165,8 +170,8 @@ def main() -> None:
                     percentage_inside_value = percentage_inside(
                         predictions[:, :, j], y[:, j], i + 1
                     ).item()
-                    metrics[j, 2 + i] += percentage_inside_value
-                    metrics[j, 5 + i] += distance_distributions(
+                    metrics[j, 1 + i] += percentage_inside_value
+                    metrics[j, 4 + i] += distance_distributions(
                         percentage_inside_value, i + 1
                     )
 
@@ -185,6 +190,9 @@ def main() -> None:
 
         # save pandas dataframe
         df.to_csv(f"{RESULTS_PATH}/{name}.csv")
+        df.to_latex(
+            open(f"{RESULTS_PATH}/{name}.tex", "w"), index=True, float_format="%.3f"
+        )
 
 
 if __name__ == "__main__":

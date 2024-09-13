@@ -22,13 +22,16 @@ def percentage_inside(
     """
 
     # define limits of confidence intervals
-    upper_ci = torch.mean(predictions, dim=0) + torch.quantile(
-        predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
-    )
-    torch.std(predictions, dim=0)
-    low_ci = torch.mean(predictions, dim=0) - torch.quantile(
-        predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
-    )
+    # upper_ci = torch.mean(predictions, dim=0) + torch.quantile(
+    #     predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
+    # )
+    # low_ci = torch.mean(predictions, dim=0) - torch.quantile(
+    #     predictions, num_stds * torch.tensor([0.25]).to(predictions.device), dim=0
+    # )
+
+    # define limits of confidence intervals
+    upper_ci = torch.mean(predictions, dim=0) + num_stds * torch.std(predictions, dim=0)
+    low_ci = torch.mean(predictions, dim=0) - num_stds * torch.std(predictions, dim=0)
 
     # count inside samples
     inside_samples: torch.Tensor = (target <= upper_ci) & (target >= low_ci)

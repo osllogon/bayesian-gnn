@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from typing import Literal, Tuple, Optional
 
 # own modules
-from src.utils import set_seed, load_data, compute_predictions_by_sampling
+from src.utils import set_seed, load_data, compute_predictions_by_sampling, MinMaxScaler
 from src.models import GCN, GAT
 
 # set seed, number of therads and define device
@@ -32,13 +32,13 @@ def main() -> None:
     This function is the main program for training models
 
     Raises:
-        ValueError: Invalid model name
+        ValueError: Invalid model name.
     """
 
     # define variables
     dataset_name: Literal["QM9", "ZINC"] = "QM9"
-    model_name: Literal["gcn", "gat"] = "gcn"
-    bayesian_mode: Literal["none", "weights", "dropout"] = "weights"
+    model_name: Literal["gcn", "gat"] = "gat"
+    bayesian_mode: Literal["none", "weights", "dropout"] = "none"
     dropout_rate: Optional[float] = 0.5
 
     # define hyperparameters
@@ -47,6 +47,9 @@ def main() -> None:
     kl_weight: float = 1.0
     epochs: int = 100
     num_bayesian_samples: int = 50
+
+    # empty nohup file
+    open("nohup.out", "w").close()
 
     # check device
     print(f"device: {device}")
@@ -72,9 +75,13 @@ def main() -> None:
     # define dataset
     train_data: DataLoader
     val_data: DataLoader
-    train_data, val_data, _ = load_data(
+    train_data, val_data, _, x_scaler, y_scaler = load_data(
         dataset_name, f"{DATA_PATH}/{dataset_name}", SPLIT_SIZES
     )
+
+    # change device of scalers
+    x_scaler = x_scaler.to(device)
+    y_scaler = y_scaler.to(device)
 
     # define model
     data: Data = next(iter(train_data))
@@ -122,16 +129,22 @@ def main() -> None:
 
         # iterate over data
         for data in train_data:
-            x = data.x.float().to(device)
+            x = x_scaler.transform(data.x.float().to(device))
             edge_index = data.edge_index.to(device)
             y: torch.Tensor = data.y.float().to(device)
             batch_indexes = data.batch.to(device)
 
+            # normalize target
+            y_norm: torch.Tensor = y_scaler.transform(y)
+
             # compute outputs and loss value
-            outputs: torch.Tensor = model(x, edge_index, batch_indexes)
-            loss_mse = loss(outputs, y)
+            outputs_norm: torch.Tensor = model(x, edge_index, batch_indexes)
+            loss_mse = loss(outputs_norm, y_norm)
             loss_kl = kl_weight / len(train_data) * kl_loss(model)
             loss_value = loss_mse + loss_kl
+
+            # unnorm
+            outputs: torch.Tensor = y_scaler.inverse_transform(outputs_norm)
 
             # optimize
             optimizer.zero_grad()
@@ -162,19 +175,22 @@ def main() -> None:
 
             # iterate over data
             for data in val_data:
-                x = data.x.float().to(device)
+                x = x_scaler.transform(data.x.float().to(device))
                 edge_index = data.edge_index.to(device)
                 y = data.y.float().to(device)
                 batch_indexes = data.batch.to(device)
 
                 # compute outputs and loss value
-                outputs = model(x, edge_index, batch_indexes)
+                outputs_norm = model(x, edge_index, batch_indexes)
                 if bayesian_mode != "none":
-                    outputs = compute_predictions_by_sampling(
+                    outputs_norm = compute_predictions_by_sampling(
                         model, x, edge_index, batch_indexes, num_bayesian_samples
                     )
                 else:
-                    outputs = model(x, edge_index, batch_indexes)
+                    outputs_norm = model(x, edge_index, batch_indexes)
+
+                # unnorm
+                outputs = y_scaler.inverse_transform(outputs_norm)
 
                 # add data
                 for i in range(data.y.shape[1]):
