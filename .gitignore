@@ -5,7 +5,6 @@ __pycache__/
 /runs/
 /models/
 /results/
-/results2/
 
 # files
 *.out
